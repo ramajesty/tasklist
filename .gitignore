@@ -1,0 +1,7 @@
+# 公開しないもの
+.claude/
+仕様書.md
+node_modules/
+*.tgz
+desktop.ini
+Thumbs.db
