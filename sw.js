@@ -1,6 +1,6 @@
 // オフライン用サービスワーカー
 // 方針: ネット優先（最新を取得してキャッシュ更新）→ 失敗したらキャッシュから返す
-const CACHE = 'tasklist-v3';
+const CACHE = 'tasklist-v4';
 const ASSETS = [
   './',
   './index.html',

@@ -67,6 +67,40 @@ async function refreshUserStatus() {
 }
 
 // ---------------------------------------------------------------------------
+// iPhone ショートカット用のキー（サーバーにはハッシュだけ保存）
+// ---------------------------------------------------------------------------
+export const shortcutEndpoint = () => `${SUPABASE_URL}/rest/v1/rpc/quick_add?apikey=${SUPABASE_KEY}`;
+
+async function sha256Hex(s) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 発行済みなら発行日時、未発行なら null
+export async function getShortcutTokenInfo() {
+  const c = client();
+  const user = await getUser();
+  if (!c || !user) return null;
+  const { data, error } = await c.from('shortcut_tokens').select('created_at').eq('user_id', user.id).maybeSingle();
+  if (error) throw new Error(error.code === 'PGRST205' ? 'サーバー側の準備（shortcut.sql の実行）がまだです' : error.message);
+  return data?.created_at ?? null;
+}
+
+// 新しいキーを発行（古いキーは使えなくなる）。キー本体はこの1回だけ返す
+export async function issueShortcutToken() {
+  const c = client();
+  const user = await getUser();
+  if (!c || !user) throw new Error('ログインしてください');
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const { error } = await c.from('shortcut_tokens').upsert({
+    user_id: user.id, token_hash: await sha256Hex(token), created_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(error.code === 'PGRST205' ? 'サーバー側の準備（shortcut.sql の実行）がまだです' : error.message);
+  return token;
+}
+
+// ---------------------------------------------------------------------------
 // 起動時の準備: 変更の監視・定期同期
 // ---------------------------------------------------------------------------
 export async function initSync() {

@@ -557,6 +557,8 @@ async function openMenu() {
       <button class="menu-item" data-act="calendar">📅 会社カレンダー（稼働日の設定）</button>
       <h3>同期（クラウド保存）</h3>
       <div id="sync-box"></div>
+      <h3>iPhoneショートカット（共有・音声で追加）</h3>
+      <div id="shortcut-box"></div>
       <h3>バックアップ</h3>
       <button class="menu-item" data-act="export-json">💾 バックアップを保存（画像込み）</button>
       <button class="menu-item" data-act="export-csv">📄 CSVで書き出す（Excel用）</button>
@@ -568,15 +570,28 @@ async function openMenu() {
     </div>`, closeSheet);
 
   renderSyncBox(sheet);
+  renderShortcutBox(sheet);
 
   sheet.addEventListener('click', async (e) => {
-    const act = e.target.closest('[data-act]')?.dataset.act;
+    const actEl = e.target.closest('[data-act]');
+    const act = actEl?.dataset.act;
     try {
       if (act === 'sync-now') { await cloud.sync(); renderSyncBox(sheet); }
+      else if (act === 'issue-token') {
+        if (actEl.dataset.has && !confirm('キーを作り直しますか？\n古いキーを入れたショートカットは使えなくなります（新しいキーに入れ替えが必要）。')) return;
+        const token = await cloud.issueShortcutToken();
+        renderShortcutBox(sheet, token);
+      }
+      else if (act === 'copy') {
+        const v = $('#' + actEl.dataset.target, sheet).value;
+        await navigator.clipboard.writeText(v);
+        toast('コピーしました');
+      }
       else if (act === 'logout') {
         if (!confirm('ログアウトしますか？\n（この端末のデータは残ります）')) return;
         await cloud.signOut();
         renderSyncBox(sheet);
+        renderShortcutBox(sheet);
       }
       else if (act === 'close') closeSheet();
       else if (act === 'done-list') openDoneList();
@@ -636,6 +651,7 @@ function renderSyncBox(sheet) {
       try {
         await cloud.signIn($('#login-email', box).value.trim(), $('#login-pass', box).value);
         renderSyncBox(sheet);
+        renderShortcutBox(sheet);
         toast('ログインしました');
       } catch (err) {
         msg.textContent = err.message;
@@ -654,6 +670,69 @@ function renderSyncBox(sheet) {
       <button class="btn small" data-act="sync-now">今すぐ同期</button>
       <button class="btn small" data-act="logout">ログアウト</button>
     </div>`;
+}
+
+// ---- iPhone ショートカット用のキー ----
+const GUIDE_URL = 'https://github.com/ramajesty/tasklist/blob/main/docs/iPhone%E3%82%B7%E3%83%A7%E3%83%BC%E3%83%88%E3%82%AB%E3%83%83%E3%83%88%E8%A8%AD%E5%AE%9A.md';
+async function renderShortcutBox(sheet, newToken = null) {
+  const box = $('#shortcut-box', sheet);
+  if (!box) return;
+  const s = cloud.status;
+  if (s.state === 'off' || s.state === 'signed-out') {
+    box.innerHTML = '<p class="hint">同期にログインすると使えます。</p>';
+    return;
+  }
+  const copyRow = (id, label, value) => `
+    <label class="copy-row"><span>${label}</span>
+      <span class="copy-line"><input id="${id}" readonly value="${esc(value)}"><button class="btn small" type="button" data-act="copy" data-target="${id}">コピー</button></span>
+    </label>`;
+  if (newToken) {
+    box.innerHTML = `
+      <p class="hint"><b>キーを発行しました。</b>このキーは今だけ表示されます。ショートカットの設定が終わるまでこの画面を閉じないでください（閉じたら作り直せば大丈夫です）。</p>
+      ${copyRow('sc-url', '送信先URL', cloud.shortcutEndpoint())}
+      ${copyRow('sc-token', 'キー（token）', newToken)}
+      <p class="hint">設定のしかたは <a href="${GUIDE_URL}" target="_blank" rel="noopener">ショートカット設定ガイド</a> を見てください。</p>`;
+    return;
+  }
+  box.innerHTML = '<p class="hint">確認中…</p>';
+  try {
+    const at = await cloud.getShortcutTokenInfo();
+    box.innerHTML = `
+      <p class="hint">${at ? `キー発行済み（${esc(fmtTime(at))}）` : 'まだキーがありません。'}共有メニューや音声からタスクを追加するショートカットで使います。</p>
+      <button class="btn small" data-act="issue-token" ${at ? 'data-has="1"' : ''}>${at ? 'キーを作り直す' : 'キーを発行する'}</button>`;
+  } catch (err) {
+    box.innerHTML = `<p class="hint err">${esc(err.message)}</p>`;
+  }
+}
+
+// ショートカットで追加された「URLだけ」のタスクに、動画タイトルを入れる
+let fillingTitles = false;
+async function fillTitles() {
+  if (fillingTitles || !navigator.onLine) return;
+  fillingTitles = true;
+  try {
+    let changed = false;
+    for (const t of live().filter((x) => x.needsTitle)) {
+      const url = (t.memo || '').match(/https?:\/\/\S+/)?.[0];
+      let title = null;
+      if (url && /(youtube\.com|youtu\.be)/i.test(url)) {
+        try {
+          const r = await fetch('https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent(url));
+          if (r.ok) title = (await r.json()).title || null;
+          else if (r.status >= 500) continue; // 一時的なエラー → 次回また試す
+        } catch { continue; } // 通信エラー → 次回また試す
+      }
+      const cur = findTask(t.id);
+      if (!cur || !cur.needsTitle) continue;
+      if (title && cur.title === url) cur.title = title;
+      delete cur.needsTitle;
+      await saveTask(cur);
+      changed = true;
+    }
+    if (changed) render();
+  } finally {
+    fillingTitles = false;
+  }
 }
 
 function renderSyncPill(s) {
@@ -859,8 +938,10 @@ async function init() {
     state.tasks = await db.getAllTasks();
     await loadCalendar();
     render();
+    fillTitles();
   });
   cloud.onStatus(renderSyncPill);
+  fillTitles();
   cloud.initSync().catch((err) => console.error(err));
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
