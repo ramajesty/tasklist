@@ -67,36 +67,45 @@ async function refreshUserStatus() {
 }
 
 // ---------------------------------------------------------------------------
-// iPhone ショートカット用のキー（サーバーにはハッシュだけ保存）
+// 外部連携用のキー（サーバーにはハッシュだけ保存）
+//   shortcut: iPhone ショートカットからの追加 ／ feed: カレンダー購読
 // ---------------------------------------------------------------------------
+const TOKEN_KINDS = {
+  shortcut: { table: 'shortcut_tokens', sql: 'shortcut.sql' },
+  feed: { table: 'feed_tokens', sql: 'calendar-feed.sql' },
+};
 export const shortcutEndpoint = () => `${SUPABASE_URL}/rest/v1/rpc/quick_add?apikey=${SUPABASE_KEY}`;
+export const feedUrl = (token) => `${SUPABASE_URL}/rest/v1/rpc/tasks_ics?token=${encodeURIComponent(token)}&apikey=${SUPABASE_KEY}`;
 
 async function sha256Hex(s) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+const tokenError = (kind, error) =>
+  new Error(error.code === 'PGRST205' ? `サーバー側の準備（${TOKEN_KINDS[kind].sql} の実行）がまだです` : error.message);
+
 // 発行済みなら発行日時、未発行なら null
-export async function getShortcutTokenInfo() {
+export async function getTokenInfo(kind) {
   const c = client();
   const user = await getUser();
   if (!c || !user) return null;
-  const { data, error } = await c.from('shortcut_tokens').select('created_at').eq('user_id', user.id).maybeSingle();
-  if (error) throw new Error(error.code === 'PGRST205' ? 'サーバー側の準備（shortcut.sql の実行）がまだです' : error.message);
+  const { data, error } = await c.from(TOKEN_KINDS[kind].table).select('created_at').eq('user_id', user.id).maybeSingle();
+  if (error) throw tokenError(kind, error);
   return data?.created_at ?? null;
 }
 
 // 新しいキーを発行（古いキーは使えなくなる）。キー本体はこの1回だけ返す
-export async function issueShortcutToken() {
+export async function issueToken(kind) {
   const c = client();
   const user = await getUser();
   if (!c || !user) throw new Error('ログインしてください');
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   const token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  const { error } = await c.from('shortcut_tokens').upsert({
+  const { error } = await c.from(TOKEN_KINDS[kind].table).upsert({
     user_id: user.id, token_hash: await sha256Hex(token), created_at: new Date().toISOString(),
   });
-  if (error) throw new Error(error.code === 'PGRST205' ? 'サーバー側の準備（shortcut.sql の実行）がまだです' : error.message);
+  if (error) throw tokenError(kind, error);
   return token;
 }
 

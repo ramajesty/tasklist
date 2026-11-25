@@ -558,7 +558,9 @@ async function openMenu() {
       <h3>同期（クラウド保存）</h3>
       <div id="sync-box"></div>
       <h3>iPhoneショートカット（共有・音声で追加）</h3>
-      <div id="shortcut-box"></div>
+      <div id="shortcut-box" class="token-box"></div>
+      <h3>カレンダー購読（Google・Outlook）</h3>
+      <div id="feed-box" class="token-box"></div>
       <h3>バックアップ</h3>
       <button class="menu-item" data-act="export-json">💾 バックアップを保存（画像込み）</button>
       <button class="menu-item" data-act="export-csv">📄 CSVで書き出す（Excel用）</button>
@@ -570,7 +572,7 @@ async function openMenu() {
     </div>`, closeSheet);
 
   renderSyncBox(sheet);
-  renderShortcutBox(sheet);
+  renderTokenBoxes(sheet);
 
   sheet.addEventListener('click', async (e) => {
     const actEl = e.target.closest('[data-act]');
@@ -578,9 +580,10 @@ async function openMenu() {
     try {
       if (act === 'sync-now') { await cloud.sync(); renderSyncBox(sheet); }
       else if (act === 'issue-token') {
-        if (actEl.dataset.has && !confirm('キーを作り直しますか？\n古いキーを入れたショートカットは使えなくなります（新しいキーに入れ替えが必要）。')) return;
-        const token = await cloud.issueShortcutToken();
-        renderShortcutBox(sheet, token);
+        const kind = actEl.dataset.kind;
+        if (actEl.dataset.has && !confirm(TOKEN_UI[kind].confirm)) return;
+        const token = await cloud.issueToken(kind);
+        renderTokenBox(sheet, kind, token);
       }
       else if (act === 'copy') {
         const v = $('#' + actEl.dataset.target, sheet).value;
@@ -591,7 +594,7 @@ async function openMenu() {
         if (!confirm('ログアウトしますか？\n（この端末のデータは残ります）')) return;
         await cloud.signOut();
         renderSyncBox(sheet);
-        renderShortcutBox(sheet);
+        renderTokenBoxes(sheet);
       }
       else if (act === 'close') closeSheet();
       else if (act === 'done-list') openDoneList();
@@ -651,7 +654,7 @@ function renderSyncBox(sheet) {
       try {
         await cloud.signIn($('#login-email', box).value.trim(), $('#login-pass', box).value);
         renderSyncBox(sheet);
-        renderShortcutBox(sheet);
+        renderTokenBoxes(sheet);
         toast('ログインしました');
       } catch (err) {
         msg.textContent = err.message;
@@ -672,34 +675,58 @@ function renderSyncBox(sheet) {
     </div>`;
 }
 
-// ---- iPhone ショートカット用のキー ----
-const GUIDE_URL = 'https://github.com/ramajesty/tasklist/blob/main/docs/iPhone%E3%82%B7%E3%83%A7%E3%83%BC%E3%83%88%E3%82%AB%E3%83%83%E3%83%88%E8%A8%AD%E5%AE%9A.md';
-async function renderShortcutBox(sheet, newToken = null) {
-  const box = $('#shortcut-box', sheet);
+// ---- 外部連携用のキー（iPhone ショートカット・カレンダー購読） ----
+const DOCS = 'https://github.com/ramajesty/tasklist/blob/main/docs/';
+const copyRow = (id, label, value) => `
+  <label class="copy-row"><span>${label}</span>
+    <span class="copy-line"><input id="${id}" readonly value="${esc(value)}"><button class="btn small" type="button" data-act="copy" data-target="${id}">コピー</button></span>
+  </label>`;
+const TOKEN_UI = {
+  shortcut: {
+    box: '#shortcut-box',
+    about: '共有メニューや音声からタスクを追加するショートカットで使います。',
+    none: 'まだキーがありません。', has: 'キー発行済み',
+    issue: 'キーを発行する', reissue: 'キーを作り直す',
+    confirm: 'キーを作り直しますか？\n古いキーを入れたショートカットは使えなくなります（新しいキーに入れ替えが必要）。',
+    shown: (token) => `
+      <p class="hint"><b>キーを発行しました。</b>このキーは今だけ表示されます。ショートカットの設定が終わるまでこの画面を閉じないでください（閉じたら作り直せば大丈夫です）。</p>
+      ${copyRow('sc-url', '送信先URL', cloud.shortcutEndpoint())}
+      ${copyRow('sc-token', 'キー（token）', token)}
+      <p class="hint">設定のしかたは <a href="${DOCS}${encodeURIComponent('iPhoneショートカット設定.md')}" target="_blank" rel="noopener">ショートカット設定ガイド</a> を見てください。</p>`,
+  },
+  feed: {
+    box: '#feed-box',
+    about: '未完了タスクの期限日を、Googleカレンダーや Outlook に終日の予定として表示します（表示のみ）。',
+    none: 'まだ購読URLがありません。', has: '購読URL発行済み',
+    issue: '購読URLを発行する', reissue: '購読URLを作り直す',
+    confirm: '購読URLを作り直しますか？\n古いURLで購読しているカレンダーには表示されなくなります（新しいURLで購読し直しが必要）。',
+    shown: (token) => `
+      <p class="hint"><b>購読URLを発行しました。</b>このURLは今だけ表示されます。カレンダーに登録し終わるまでこの画面を閉じないでください（閉じたら作り直せば大丈夫です）。</p>
+      ${copyRow('feed-url', '購読URL', cloud.feedUrl(token))}
+      <p class="hint">登録のしかたは <a href="${DOCS}${encodeURIComponent('カレンダー購読設定.md')}" target="_blank" rel="noopener">カレンダー購読ガイド</a> を見てください。このURLを知っている人は誰でもタスクを見られるので、人に教えないでください。</p>`,
+  },
+};
+
+function renderTokenBoxes(sheet) {
+  for (const kind of Object.keys(TOKEN_UI)) renderTokenBox(sheet, kind);
+}
+
+async function renderTokenBox(sheet, kind, newToken = null) {
+  const ui = TOKEN_UI[kind];
+  const box = $(ui.box, sheet);
   if (!box) return;
   const s = cloud.status;
   if (s.state === 'off' || s.state === 'signed-out') {
     box.innerHTML = '<p class="hint">同期にログインすると使えます。</p>';
     return;
   }
-  const copyRow = (id, label, value) => `
-    <label class="copy-row"><span>${label}</span>
-      <span class="copy-line"><input id="${id}" readonly value="${esc(value)}"><button class="btn small" type="button" data-act="copy" data-target="${id}">コピー</button></span>
-    </label>`;
-  if (newToken) {
-    box.innerHTML = `
-      <p class="hint"><b>キーを発行しました。</b>このキーは今だけ表示されます。ショートカットの設定が終わるまでこの画面を閉じないでください（閉じたら作り直せば大丈夫です）。</p>
-      ${copyRow('sc-url', '送信先URL', cloud.shortcutEndpoint())}
-      ${copyRow('sc-token', 'キー（token）', newToken)}
-      <p class="hint">設定のしかたは <a href="${GUIDE_URL}" target="_blank" rel="noopener">ショートカット設定ガイド</a> を見てください。</p>`;
-    return;
-  }
+  if (newToken) { box.innerHTML = ui.shown(newToken); return; }
   box.innerHTML = '<p class="hint">確認中…</p>';
   try {
-    const at = await cloud.getShortcutTokenInfo();
+    const at = await cloud.getTokenInfo(kind);
     box.innerHTML = `
-      <p class="hint">${at ? `キー発行済み（${esc(fmtTime(at))}）` : 'まだキーがありません。'}共有メニューや音声からタスクを追加するショートカットで使います。</p>
-      <button class="btn small" data-act="issue-token" ${at ? 'data-has="1"' : ''}>${at ? 'キーを作り直す' : 'キーを発行する'}</button>`;
+      <p class="hint">${at ? `${ui.has}（${esc(fmtTime(at))}）。` : ui.none}${ui.about}</p>
+      <button class="btn small" data-act="issue-token" data-kind="${kind}" ${at ? 'data-has="1"' : ''}>${at ? ui.reissue : ui.issue}</button>`;
   } catch (err) {
     box.innerHTML = `<p class="hint err">${esc(err.message)}</p>`;
   }

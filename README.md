@@ -35,4 +35,5 @@ PC内でのテストは別ポート（5174）で行うと、普段使いのデ�
 - 公開URL: https://ramajesty.github.io/tasklist/ （GitHub Pages。`main` に push すると数分で反映）
 - クラウド同期: Supabase（タスク・画像・会社カレンダー）。端末内が正本で、ログイン中は自動同期
 - iPhoneショートカット: 共有メニュー・音声から今日期限で追加（`supabase/shortcut.sql` ＋ [設定ガイド](docs/iPhoneショートカット設定.md)）。YouTubeのURLはアプリを開いたときに動画タイトルへ置き換え
-- 未実装: カレンダー購読、通知
+- カレンダー購読: 未完了タスクの期限日を Googleカレンダー・Outlook に終日予定として表示（`supabase/calendar-feed.sql` ＋ [購読ガイド](docs/カレンダー購読設定.md)）
+- 未実装: 通知

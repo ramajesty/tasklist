@@ -365,8 +365,8 @@ a.link.k-teams::before { content: "Teams"; background: #5b5fc7; }
 .sync-info { font-size: 14px; display: flex; flex-direction: column; gap: 2px; }
 .sync-info .err { color: var(--danger); font-size: 12px; word-break: break-word; }
 .sync-actions { display: flex; gap: 8px; margin-top: 8px; }
-#shortcut-box { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-#shortcut-box .err { color: var(--danger); }
+.token-box { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.token-box .err { color: var(--danger); }
 .copy-row { display: flex; flex-direction: column; gap: 4px; width: 100%; font-size: 13px; }
 .copy-line { display: flex; gap: 6px; }
 .copy-line input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
