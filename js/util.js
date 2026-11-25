@@ -65,7 +65,7 @@ export function escapeHtml(s) {
 }
 
 // メモ内のURLをリンク化。[表示名](URL) 形式にも対応。onenote: スキームも許可。
-const LINK_RE = /\[([^\]\n]+)\]\(((?:https?:\/\/|onenote:)[^\s)]+)\)|((?:https?:\/\/|onenote:)[^\s<>"'）」]+)/g;
+const LINK_RE = /\[([^\]\n]+)\]\s*\(\s*((?:https?:\/\/|onenote:)[^\s)]+)\s*\)|((?:https?:\/\/|onenote:)[^\s<>"'）」]+)/g;
 
 export function linkify(text) {
   text = text || '';
@@ -81,6 +81,8 @@ export function linkify(text) {
       url = m[3];
       const tm = url.match(/[.,;:!?、。]+$/);
       if (tm) { tail = tm[0]; url = url.slice(0, -tail.length); }
+      // 括弧で囲まれたURLの閉じ括弧「)」をURLに含めない
+      if (url.endsWith(')') && !url.includes('(')) { tail = ')' + tail; url = url.slice(0, -1); }
       label = prettyUrl(url);
     }
     out += `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="link ${linkKind(url)}">${escapeHtml(label)}</a>${escapeHtml(tail)}`;
@@ -94,6 +96,7 @@ export function linkKind(u) {
   if (/^onenote:/i.test(u) || /onenote/i.test(u)) return 'k-onenote';
   if (/sharepoint\.com/i.test(u)) return 'k-sharepoint';
   if (/(youtube\.com|youtu\.be)/i.test(u)) return 'k-youtube';
+  if (/teams\.(microsoft|live)\.com/i.test(u)) return 'k-teams';
   return '';
 }
 

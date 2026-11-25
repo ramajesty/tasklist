@@ -245,13 +245,14 @@ code, kbd { font-family: ui-monospace, Consolas, monospace; font-size: .9em; bac
 }
 .memo-view .placeholder { color: var(--muted); }
 a.link { color: var(--accent); }
-a.link.k-onenote::before, a.link.k-sharepoint::before, a.link.k-youtube::before {
+a.link.k-onenote::before, a.link.k-sharepoint::before, a.link.k-youtube::before, a.link.k-teams::before {
   display: inline-block; font-size: 11px; font-weight: 700; color: #fff; border-radius: 4px;
   padding: 0 5px; margin-right: 4px; vertical-align: 1px; text-decoration: none;
 }
 a.link.k-onenote::before { content: "OneNote"; background: #7719aa; }
 a.link.k-sharepoint::before { content: "SharePoint"; background: #038387; }
 a.link.k-youtube::before { content: "YouTube"; background: #e02020; }
+a.link.k-teams::before { content: "Teams"; background: #5b5fc7; }
 
 .images { display: flex; flex-wrap: wrap; gap: 8px; }
 .images:empty { display: none; }
